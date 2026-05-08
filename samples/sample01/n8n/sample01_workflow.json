@@ -1,0 +1,437 @@
+{
+  "id": "lImKhYUEYT0kv0i4",
+  "name": "Sample01 Inquiry Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sample01",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Webhook",
+      "webhookId": "sample01-webhook-uuid"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 256,\n  \"temperature\": 0,\n  \"system\": \"あなたは BtoB 企業の顧客対応窓口で、受信した問い合わせメールを分類するアシスタントです。\\n\\n入力された問い合わせを以下の 4 軸で分類し、必ず JSON のみを出力してください。説明文や前置きは一切不要です。\\n\\n<分類軸>\\n- category: 問い合わせの種類。次のいずれか。\\n  - \\\"質問\\\"\\n  - \\\"苦情\\\"\\n  - \\\"見積もり依頼\\\"\\n  - \\\"予約・問い合わせ\\\"\\n  - \\\"その他\\\"\\n- urgency: 緊急度。次のいずれか。\\n  - \\\"高\\\": 即時対応が必要(怒り・トラブル・損失発生・期限切迫)\\n  - \\\"中\\\": 1 営業日以内に返信すべき(通常の見積依頼・予約・質問)\\n  - \\\"低\\\": 数日以内で問題ない(情報提供依頼・カタログ請求等)\\n- sentiment: 送信者の感情。次のいずれか。\\n  - \\\"ポジティブ\\\": 感謝・賞賛・好意的な感想を**明示的に**含む(例:「いつもありがとうございます」「とても助かっています」)。単なる丁寧な敬語はポジティブに含めない\\n  - \\\"ニュートラル\\\": 事実・要望・依頼ベースで、感情表現が乏しい。ビジネスの定型文や敬語のみの文面はここに分類\\n  - \\\"ネガティブ\\\": 不満・批判・苦情・要求の強さが明示されている(例:「困っています」「分かりづらい」「対応が遅い」「改善してほしい」)。穏やかな口調でも批判的内容ならネガティブ\\n- recommended_response_deadline: 推奨対応期限。次のいずれか。\\n  - \\\"2時間以内\\\"\\n  - \\\"24時間以内\\\"\\n  - \\\"3営業日以内\\\"\\n</分類軸>\\n\\n<出力形式>\\n{\\n  \\\"category\\\": \\\"...\\\",\\n  \\\"urgency\\\": \\\"...\\\",\\n  \\\"sentiment\\\": \\\"...\\\",\\n  \\\"recommended_response_deadline\\\": \\\"...\\\"\\n}\\n</出力形式>\\n\\n<判定の指針>\\n- urgency と recommended_response_deadline は対応関係を持たせる:\\n  - 高 → 2時間以内\\n  - 中 → 24時間以内\\n  - 低 → 3営業日以内\\n- 苦情・トラブル系は sentiment がネガティブで urgency が高くなる傾向\\n- 見積もり依頼は通常 urgency 中、ただし「至急」「本日中」等の文言があれば高\\n- 判断に迷ったら 1 段階上の緊急度を採用(false negative を避ける)\\n</判定の指針>\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"以下の問い合わせメールを分類してください。\\n\\n<inquiry>\\n<sender_name>{{ $json.body.sender_name }}</sender_name>\\n<sender_email>{{ $json.body.sender_email }}</sender_email>\\n<subject>{{ $json.body.subject }}</subject>\\n<body>\\n{{ $json.body.body }}\\n</body>\\n</inquiry>\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"{\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "Classify",
+      "credentials": {
+        "httpCustomAuth": {
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Claude のレスポンスから分類結果を抽出。\n// Prefill で \"{\" を送ったので、レスポンス本文は \"...\" 形式の文字列。\n// 元のWebhook入力も後段で使うため保持する。\nconst apiResponse = $input.first().json;\nconst classifyText = apiResponse.content[0].text;\nconst classification = JSON.parse('{' + classifyText);\nconst original = $('Webhook').first().json.body;\nreturn [{ json: { classification, original } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Parse Classification"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classification.urgency }}",
+                    "rightValue": "高",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "高"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classification.urgency }}",
+                    "rightValue": "中",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "中"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.classification.urgency }}",
+                    "rightValue": "低",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "低"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        660,
+        300
+      ],
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "Switch by Urgency"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 800,\n  \"temperature\": 0,\n  \"system\": \"あなたは BtoB 企業のカスタマーサポート担当者です。緊急度の高い問い合わせに対する返信ドラフトを作成します。\\n\\n<トーン>\\n- 冒頭で「ご不便をおかけし申し訳ございません」と謝意を示す(ただし過剰に謝らない)\\n- 即時対応の姿勢を明示する(例:「直ちに調査いたします」「本日中に折り返しご連絡します」)\\n- 具体的な次のアクションと時間軸を示す\\n</トーン>\\n\\n<必須要素>\\n1. 状況把握のための具体的な質問を 1 つ(例:「対象の注文番号をお知らせください」「いつから発生していますか」)\\n2. 折り返し連絡の目安時間(2 時間以内、本日 17 時まで等)\\n</必須要素>\\n\\n<文字数(厳守)>\\n200〜300 字。300 字を超えてはならない。簡潔さと迅速性を最優先。\\n</文字数(厳守)>\\n<書式制約(厳守)>\\n- Markdown 記号(**太字**、## 見出し、- 箇条書き等)は一切使用しない。プレーンテキストのみで出力する\\n- 改行は段落区切りにのみ使用(2〜3 段落程度)\\n- 署名は「〇〇株式会社 カスタマーサポート」で締める\\n</書式制約(厳守)>\\n\\n<出力>\\n返信本文のみ。前置きや補足説明は不要。\\n</出力>\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"以下の問い合わせメールに対する返信ドラフトを作成してください。\\n\\n<inquiry>\\n<sender_name>{{ $('Parse Classification').first().json.original.sender_name }}</sender_name>\\n<subject>{{ $('Parse Classification').first().json.original.subject }}</subject>\\n<body>\\n{{ $('Parse Classification').first().json.original.body }}\\n</body>\\n</inquiry>\\n\\n<classification>\\n<category>{{ $('Parse Classification').first().json.classification.category }}</category>\\n<urgency>{{ $('Parse Classification').first().json.classification.urgency }}</urgency>\\n<sentiment>{{ $('Parse Classification').first().json.classification.sentiment }}</sentiment>\\n</classification>\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        100
+      ],
+      "id": "55555555-5555-5555-5555-555555555551",
+      "name": "Draft Urgent",
+      "credentials": {
+        "httpCustomAuth": {
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 800,\n  \"temperature\": 0,\n  \"system\": \"あなたは BtoB 企業のカスタマーサポート担当者です。通常の問い合わせに対する返信ドラフトを作成します。\\n\\n<トーン>\\n- 丁寧かつビジネスライクに受け取り確認をする\\n- 問い合わせ内容を要約して理解を示す(「〜のご相談ですね」「〜の件、承知しました」)\\n- 必要な追加情報を整理して質問する\\n</トーン>\\n\\n<必須要素>\\n1. 問い合わせ内容の要約・受け取り確認\\n2. 回答に必要な追加情報を整理した質問を 1 つ(例:希望納期、想定予算、利用人数 等)\\n3. 回答提供までの目安時間(1 営業日以内、24 時間以内 等)\\n</必須要素>\\n\\n<文字数(厳守)>\\n300〜400 字。400 字を超えてはならない。情報を整理して論点を明確に。\\n</文字数(厳守)>\\n<書式制約(厳守)>\\n- Markdown 記号(**太字**、## 見出し、- 箇条書き等)は一切使用しない。プレーンテキストのみで出力する\\n- 改行は段落区切りにのみ使用(2〜3 段落程度)\\n- 署名は「〇〇株式会社 カスタマーサポート」で締める\\n</書式制約(厳守)>\\n\\n<出力>\\n返信本文のみ。前置きや補足説明は不要。\\n</出力>\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"以下の問い合わせメールに対する返信ドラフトを作成してください。\\n\\n<inquiry>\\n<sender_name>{{ $('Parse Classification').first().json.original.sender_name }}</sender_name>\\n<subject>{{ $('Parse Classification').first().json.original.subject }}</subject>\\n<body>\\n{{ $('Parse Classification').first().json.original.body }}\\n</body>\\n</inquiry>\\n\\n<classification>\\n<category>{{ $('Parse Classification').first().json.classification.category }}</category>\\n<urgency>{{ $('Parse Classification').first().json.classification.urgency }}</urgency>\\n<sentiment>{{ $('Parse Classification').first().json.classification.sentiment }}</sentiment>\\n</classification>\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ],
+      "id": "55555555-5555-5555-5555-555555555552",
+      "name": "Draft Normal",
+      "credentials": {
+        "httpCustomAuth": {
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 800,\n  \"temperature\": 0,\n  \"system\": \"あなたは BtoB 企業のカスタマーサポート担当者です。緊急度の低い問い合わせに対する返信ドラフトを作成します。\\n\\n<トーン>\\n- 簡潔かつ温かみのある受け答え\\n- 過度に時間を割かず、要点を絞る\\n- 関心度合いを把握する軽い質問で会話を継続させる\\n</トーン>\\n\\n<必須要素>\\n1. 問い合わせへの簡潔な感謝・受け取り確認\\n2. 関心度合いを把握する確認質問を 1 つ(例:「導入時期のご希望はございますか」「特にご関心のある機能はありますか」)\\n3. 過度に長い説明は避け、必要なら別途資料送付を提案\\n</必須要素>\\n\\n<文字数(厳守)>\\n150〜250 字。250 字を超えてはならない。簡潔に。\\n</文字数(厳守)>\\n<書式制約(厳守)>\\n- Markdown 記号(**太字**、## 見出し、- 箇条書き等)は一切使用しない。プレーンテキストのみで出力する\\n- 改行は段落区切りにのみ使用(2〜3 段落程度)\\n- 署名は「〇〇株式会社 カスタマーサポート」で締める\\n</書式制約(厳守)>\\n\\n<出力>\\n返信本文のみ。前置きや補足説明は不要。\\n</出力>\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"以下の問い合わせメールに対する返信ドラフトを作成してください。\\n\\n<inquiry>\\n<sender_name>{{ $('Parse Classification').first().json.original.sender_name }}</sender_name>\\n<subject>{{ $('Parse Classification').first().json.original.subject }}</subject>\\n<body>\\n{{ $('Parse Classification').first().json.original.body }}\\n</body>\\n</inquiry>\\n\\n<classification>\\n<category>{{ $('Parse Classification').first().json.classification.category }}</category>\\n<urgency>{{ $('Parse Classification').first().json.classification.urgency }}</urgency>\\n<sentiment>{{ $('Parse Classification').first().json.classification.sentiment }}</sentiment>\\n</classification>\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        500
+      ],
+      "id": "55555555-5555-5555-5555-555555555553",
+      "name": "Draft Simple",
+      "credentials": {
+        "httpCustomAuth": {
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// 各ドラフト HTTP Request の output を受け取り、Slack 投稿用メッセージに整形。\nconst draftResponse = $input.first().json;\nconst draftText = draftResponse.content[0].text;\nconst parseResult = $('Parse Classification').first().json;\nconst c = parseResult.classification;\nconst o = parseResult.original;\n\nconst urgencyIcon = { '高': ':red_circle:', '中': ':large_yellow_circle:', '低': ':large_green_circle:' }[c.urgency] || ':white_circle:';\n\nconst slackMessage = `${urgencyIcon} *[緊急度: ${c.urgency}]* ${o.subject || '(件名なし)'}\n\n*--- 元メッセージ ---*\n*From:* ${o.sender_name} <${o.sender_email}>\n*Subject:* ${o.subject}\n\\`\\`\\`\n${o.body}\n\\`\\`\\`\n\n*--- AI分類 ---*\n• カテゴリ: ${c.category}\n• 緊急度: ${c.urgency}\n• 感情: ${c.sentiment}\n• 推奨対応期限: ${c.recommended_response_deadline}\n\n*--- 返信ドラフト ---*\n\\`\\`\\`\n${draftText}\n\\`\\`\\``;\n\nreturn [{\n  json: {\n    slack_message: slackMessage,\n    classification: c,\n    draft: draftText,\n    original: o,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ],
+      "id": "66666666-6666-6666-6666-666666666666",
+      "name": "Format Slack Message"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL_SAMPLE01 }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify($json.slack_message) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        300
+      ],
+      "id": "77777777-7777-7777-7777-777777777777",
+      "name": "Post to Slack"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Format Slack Message').first().json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1540,
+        300
+      ],
+      "id": "88888888-8888-8888-8888-888888888888",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Switch by Urgency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch by Urgency": {
+      "main": [
+        [
+          {
+            "node": "Draft Urgent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Draft Normal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Draft Simple",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Urgent": {
+      "main": [
+        [
+          {
+            "node": "Format Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Normal": {
+      "main": [
+        [
+          {
+            "node": "Format Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Simple": {
+      "main": [
+        [
+          {
+            "node": "Format Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Slack Message": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Slack": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {},
+  "tags": []
+}
