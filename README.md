@@ -129,9 +129,12 @@ MIT License — 商用利用・改変・再配布自由。詳しくは [LICENSE]
 
 ## 連絡先
 
-- X (Twitter): [@aiflowlab](https://x.com/aiflowlab)
-- 業務自動化のご相談・カスタマイズ依頼は X DM へ
+業務自動化(n8n × Claude API)のご相談・見積依頼・カスタマイズ依頼はこちらまで:
+
+- Email: aiflowlab.jp@gmail.com
+- X (Twitter): [@aiflowlab](https://x.com/aiflowlab)(DM 開放中)
 
 ## 関連記事
 
-(公開後に追記予定)
+- note: [Claude Haiku 4.5 + n8n で問い合わせ対応ワークフローを作った](https://note.com/aiflowlab/n/n510b10be496c)
+- Zenn: [Claude Haiku 4.5 + n8n で問い合わせ対応ワークフローを作ったら、100% 精度・1 件 0.5 円で運用できた](https://zenn.dev/aiflowlab/articles/n8n-claude-haiku-inquiry-workflow)
