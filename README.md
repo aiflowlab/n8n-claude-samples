@@ -7,6 +7,7 @@
 | サンプル | 概要 | 状態 |
 |---|---|---|
 | [Sample01: Inquiry Auto-Router](./samples/sample01/) | 問い合わせメール自動分類 + 緊急度別 返信ドラフト + Slack 通知 | ✓ 完成(2026-05-08) |
+| [Sample02: Expense Auto-Detector](./samples/sample02/) | クレカ明細メール自動検知 + AI 経費判定 + 帳簿追記 + Slack 通知 | ✓ 完成(2026-05-13) |
 
 ## Sample01 — Inquiry Auto-Router
 
@@ -95,6 +96,42 @@ curl -X POST http://localhost:5678/webhook/sample01 \
 
 → Slack の指定チャンネルに緊急度絵文字付きの通知が届きます。
 
+## Sample02 — Expense Auto-Detector
+
+業務用 Gmail に届くクレカ明細メールを自動で検知し、Claude Haiku 4.5 で取引情報を抽出・分類、経費帳簿(CSV)に追記 + Slack 通知します。既知の取引先はルールで即処理、未知の取引先は AI が業務コンテキストを参照して判定するハイブリッド設計。
+
+### こんな方におすすめ
+
+- 個人事業主・フリーランスで経費の手入力・記録漏れに悩んでいる
+- ルール + AI ハイブリッドの判定設計パターンが知りたい
+- 設定ファイルを書き換えるだけで自分の業種に合わせたい
+
+### 構成
+
+13 ノードの n8n ワークフロー:
+
+```
+Gmail Trigger → Load Configs → Determine Bank → Bank Found? → Extract (Claude)
+→ Parse + Rule Match → Rule Hit? → Apply Rule / Classify (Claude) → Format From AI
+→ Merge Paths → Append Ledger → Post to Slack
+```
+
+詳細は [samples/sample02/demo/flow.md](./samples/sample02/demo/flow.md) を参照。
+
+### 検証結果
+
+- **テスト全件 PASS**: 7/7(3 銀行 / カード会社・複数経費パターン)
+- **コスト**: 1 件あたり約 1 円(Claude Haiku 4.5)
+- **対応経路**: ルール一致(自動記録)/ AI 要レビュー / AI スキップ / Bank not found の 4 経路
+
+詳細は [samples/sample02/demo/test_results.md](./samples/sample02/demo/test_results.md) を参照。
+
+### スクリーンショット
+
+- [ワークフロー全体](./samples/sample02/demo/screenshots/workflow_canvas.png)
+- [Slack 完了通知](./samples/sample02/demo/screenshots/slack_complete.png)
+- [Slack 要レビュー通知(AI 判定理由付き)](./samples/sample02/demo/screenshots/slack_review.png)
+
 ## ディレクトリ構成
 
 ```
@@ -104,7 +141,7 @@ n8n-claude-samples/
 ├── .gitignore
 ├── .env.example
 └── samples/
-    └── sample01/
+    ├── sample01/
         ├── n8n/
         │   └── sample01_workflow.json    # n8n ワークフロー定義(import 用)
         ├── prompts/
@@ -121,6 +158,28 @@ n8n-claude-samples/
             ├── test_results.md           # 検証結果サマリ
             ├── examples.md               # 代表 4 ケースの入出力対比
             └── screenshots/              # 各種スクリーンショット
+    └── sample02/
+        ├── n8n/
+        │   ├── sample02_workflow.json    # n8n ワークフロー定義(import 用)
+        │   └── code/
+        │       └── determine_bank.js     # 銀行ホワイトリスト照合コード
+        ├── prompts/
+        │   ├── extract.md                # 取引情報抽出プロンプト(Tool Use)
+        │   └── classify.md               # 業務関連性判定プロンプト
+        ├── config/
+        │   ├── bank_senders.example.json # 銀行/カード会社 送信元ホワイトリスト
+        │   ├── vendor_rules.example.json # 取引先ルール定義
+        │   └── business_context.example.md # 業務コンテキスト(AI 判定の基準)
+        ├── scripts/
+        │   ├── test_extract.py           # 抽出・分類精度ローカル検証
+        │   └── build_n8n_workflow.py     # ワークフロー JSON ビルダー
+        ├── testcases/
+        │   └── testcases.jsonl           # 7 件のテストケース
+        └── demo/
+            ├── flow.md                   # アーキテクチャ図と設計ポイント
+            ├── test_results.md           # 検証結果サマリ
+            ├── examples.md               # 7 ケースの入出力対比
+            └── screenshots/              # 各種スクリーンショット
 ```
 
 ## ライセンス
@@ -136,5 +195,10 @@ MIT License — 商用利用・改変・再配布自由。詳しくは [LICENSE]
 
 ## 関連記事
 
+**Sample01**
 - note: [Claude Haiku 4.5 + n8n で問い合わせ対応ワークフローを作った](https://note.com/aiflowlab/n/n510b10be496c)
 - Zenn: [Claude Haiku 4.5 + n8n で問い合わせ対応ワークフローを作ったら、100% 精度・1 件 0.5 円で運用できた](https://zenn.dev/aiflowlab/articles/n8n-claude-haiku-inquiry-workflow)
+
+**Sample02**
+- note: (2026-05-13 公開予定)
+- Zenn: (2026-05-13 公開予定)

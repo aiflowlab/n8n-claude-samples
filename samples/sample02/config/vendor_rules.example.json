@@ -1,0 +1,30 @@
+{
+  "_comment": "取引先ルール。クレカ明細メールから抽出された vendor_raw とマッチング。ルール一致なら AI 業務関連性判定をスキップして自動記録に進む。",
+  "_usage": "このファイルを vendor_rules.json としてコピーし、自分が業務として確定計上する取引先を追加。match_patterns は OR 条件(配列内のいずれかにマッチすればヒット)。",
+
+  "anthropic": {
+    "vendor": "Anthropic",
+    "category": "LLM",
+    "default_apportionment": 100,
+    "evidence_url_template": "https://console.anthropic.com/settings/billing",
+    "description_template": "Claude Code Max 月額",
+    "match_patterns": [
+      "ANTHROPIC PBC",
+      "ANTHROPIC",
+      "anthropic.com"
+    ]
+  },
+
+  "n8n": {
+    "vendor": "n8n",
+    "category": "ツール",
+    "default_apportionment": 100,
+    "evidence_url_template": "https://app.n8n.cloud/billing",
+    "description_template": "n8n Cloud 月額",
+    "match_patterns": [
+      "N8N.IO",
+      "N8N",
+      "n8n.cloud"
+    ]
+  }
+}

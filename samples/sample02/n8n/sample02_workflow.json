@@ -1,0 +1,483 @@
+{
+  "id": "Sample02ExpBot01",
+  "name": "Sample02 Expense Auto Detector",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "newer_than:1d"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Gmail Trigger"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// ビルド時に config/ を読み込んで埋め込み。再ビルド(build_n8n_workflow.py 再実行)で更新。\nconst bankSenders = {\n  \"_comment\": \"銀行/カード会社の送信元ホワイトリスト。新規銀行追加は 1 エントリ追加するだけで動く。各キーは識別子(自由命名)、value は { from, subject_pattern, payment_method, display_name }。\",\n  \"_usage\": \"このファイルを bank_senders.json としてコピーし、自分が利用する銀行/カードに合わせて編集。複数銀行併用に対応。\",\n\n  \"mufg_visa_debit\": {\n    \"from\": \"direct@mail.bk.mufg.jp\",\n    \"subject_pattern\": \"【三菱UFJ-VISAデビット】ご利用のお知らせ\",\n    \"payment_method\": \"デビット(MUFG)\",\n    \"display_name\": \"三菱UFJ銀行 VISAデビット\"\n  },\n\n  \"rakuten_card\": {\n    \"from\": \"info@mail.rakuten-card.co.jp\",\n    \"subject_pattern\": \"カード利用のお知らせ\",\n    \"payment_method\": \"クレジット(楽天カード)\",\n    \"display_name\": \"楽天カード\"\n  },\n\n  \"smbc_vpass\": {\n    \"from\": \"statement@vpass.ne.jp\",\n    \"subject_pattern\": \"ご利用のお知らせ\",\n    \"payment_method\": \"クレジット(三井住友 VISA)\",\n    \"display_name\": \"三井住友 VPass\"\n  },\n\n  \"jcb_card\": {\n    \"from\": \"notice@jcb-card.co.jp\",\n    \"subject_pattern\": \"JCBカード ご利用のお知らせ\",\n    \"payment_method\": \"クレジット(JCB)\",\n    \"display_name\": \"JCB カード\"\n  },\n\n  \"sumishin_sbi_debit\": {\n    \"from\": \"info@www.netbk.co.jp\",\n    \"subject_pattern\": \"デビットカードご利用のお知らせ\",\n    \"payment_method\": \"デビット(住信SBI)\",\n    \"display_name\": \"住信SBIネット銀行 デビット\"\n  }\n}\n;\nconst vendorRules = {\n  \"_comment\": \"取引先ルール。クレカ明細メールから抽出された vendor_raw とマッチング。ルール一致なら AI 業務関連性判定をスキップして自動記録に進む。\",\n  \"_usage\": \"このファイルを vendor_rules.json としてコピーし、自分が業務として確定計上する取引先を追加。match_patterns は OR 条件(配列内のいずれかにマッチすればヒット)。\",\n\n  \"anthropic\": {\n    \"vendor\": \"Anthropic\",\n    \"category\": \"LLM\",\n    \"default_apportionment\": 100,\n    \"evidence_url_template\": \"https://console.anthropic.com/settings/billing\",\n    \"description_template\": \"Claude Code Max 月額\",\n    \"match_patterns\": [\n      \"ANTHROPIC PBC\",\n      \"ANTHROPIC\",\n      \"anthropic.com\"\n    ]\n  },\n\n  \"n8n\": {\n    \"vendor\": \"n8n\",\n    \"category\": \"ツール\",\n    \"default_apportionment\": 100,\n    \"evidence_url_template\": \"https://app.n8n.cloud/billing\",\n    \"description_template\": \"n8n Cloud 月額\",\n    \"match_patterns\": [\n      \"N8N.IO\",\n      \"N8N\",\n      \"n8n.cloud\"\n    ]\n  }\n}\n;\nconst businessContext = \"# あなたの業務コンテキスト(テンプレート)\\n\\nこのファイルは Sample02 の経費自動検知 Bot が AI 判定時に参照する **業務コンテキスト** のテンプレートです。\\n\\n## 使い方\\n\\n1. このファイルを `business_context.md`(同じディレクトリ内)としてコピー\\n2. 自分の事業内容に合わせて中身を書き換える\\n3. n8n ワークフローを再起動するか、変更後の最初のメール処理から自動で反映される\\n\\n`business_context.md` は **gitignore 対象** にして、自分のリポでローカル管理する想定です(コードは公開、業務情報はローカル管理という Sample01 と同じ思想)。\\n\\n---\\n\\n## 業務の概要\\n\\nここにあなたの事業 / 個人事業 / フリーランス活動の内容を 1〜3 行で記述してください。\\n\\n例:\\n> 業務自動化(n8n × Claude API)の実装事例公開と、それを起点とした個人事業主向けのコンサル/受託案件。\\n\\n例:\\n> Web 制作受託(主に LP・コーポレートサイト)。WordPress + ヘッドレス CMS の構成が中心。クライアントは小規模事業者(年商〜5 億円規模)。\\n\\n例:\\n> 中小企業向けの業務改善コンサルティング。製造業の DX 推進が主領域。社内研修・ツール選定支援・PoC 設計が主なサービス。\\n\\n---\\n\\n## 業務に直接関連するもの(按分 100% 推奨)\\n\\n経費としてフルで計上できるカテゴリを箇条書きで列挙してください。AI はこれを参考に按分率を推奨します。\\n\\n例(業務自動化の場合):\\n- LLM API 利用料(Anthropic / OpenAI 等)\\n- ワークフロー自動化ツール(n8n / Zapier / Make 等)\\n- 業務関連の技術書(Claude / n8n / プログラミング / システム設計 等)\\n- 業務用ドメイン(自社サイト / ショーケースサイト)\\n- クラウドホスティング(Vercel / Cloudflare / AWS 等、業務利用)\\n\\n例(Web 制作の場合):\\n- デザインツール(Figma / Adobe CC 等)\\n- ホスティング・ドメイン(クライアント案件用 / 自社用)\\n- ストックフォト / フォントライセンス\\n- Web 制作関連の技術書\\n\\n---\\n\\n## 業務に部分的に関連するもの(按分 30〜70% 想定)\\n\\n業務にも個人にも使うが、業務利用が一定割合あるカテゴリ。AI は内容に応じて中間値を推奨します。\\n\\n例:\\n- 一般的なマネジメント書 / マーケ書(業務に役立つが個人読書も含む)\\n- 汎用 SaaS(Notion / Slack 個人プラン / GitHub Pro 等)\\n- コワーキングスペース利用料\\n\\n---\\n\\n## 業務無関係(按分 0%、自動スキップ推奨)\\n\\n業務と無関係な購入。AI はこれらを 0% 推奨 + 「スキップ(ledger 追記なし)」を提案します。\\n\\n例:\\n- 食品 / 日用品 / 家庭用品\\n- エンタメ系書籍(小説・漫画・趣味本)\\n- 個人旅行関連\\n- 衣料品(業務制服を除く)\\n\\n---\\n\\n## 補足ルール(任意)\\n\\nAI 判定の補助情報として、運用ルールがあればここに記述してください。\\n\\n例:\\n- Amazon の購入で 1 万円以上は手動確認(AI 判定だけで自動記録しない)\\n- 〜年〜月以前のメールは無視(過去メールの大量処理を避ける)\\n- 特定送信元(例: noreply@github.com)はすべて業務関連扱い\\n\\n---\\n\\n## 注意\\n\\n- このファイルの内容は Claude API に **メール本文と一緒に送信** されます。社外秘情報や個人情報は含めないでください\\n- `business_context.md`(ローカル運用版)は **必ず gitignore 対象** にしてください\\n- このテンプレート(`.example.md`)はリポ公開用のサンプルなので、機微な情報は書かないでください\\n\";\n\nreturn [{ json: { bank_senders: bankSenders, vendor_rules: vendorRules, business_context: businessContext } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "Load Configs"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Gmail Trigger 出力(Simplify=false、mailparser 整形済み)から送信元アドレスを抽出し、\n// Load Configs の bank_senders と照合する。\n// Gmail Trigger は 1 poll で複数 item を返しうるため、$('Gmail Trigger').all() を回す。\n// 出力構造: { from: { value: [{ address, name }], text, html }, subject, date, text, ... }\nconst triggerItems = $('Gmail Trigger').all();\nconst configs = $('Load Configs').first().json;\n\nreturn triggerItems.map((triggerItem, idx) => {\n  const trigger = triggerItem.json;\n\n  let fromAddr = '';\n  if (trigger.from && trigger.from.value && trigger.from.value[0]) {\n    fromAddr = (trigger.from.value[0].address || '').toLowerCase().trim();\n  }\n\n  let matchedKey = null;\n  let matchedRule = null;\n  for (const [key, rule] of Object.entries(configs.bank_senders)) {\n    if (key.startsWith('_')) continue;\n    if (rule.from && rule.from.toLowerCase() === fromAddr) {\n      matchedKey = key;\n      matchedRule = rule;\n      break;\n    }\n  }\n\n  return {\n    json: {\n      bank_matched: matchedKey !== null,\n      bank_key: matchedKey,\n      payment_method: matchedRule ? matchedRule.payment_method : null,\n      bank_display_name: matchedRule ? matchedRule.display_name : null,\n      from_addr: fromAddr,\n      subject: trigger.subject || '',\n      received_at: trigger.date || '',\n      body: trigger.text || '',\n    },\n    pairedItem: { item: idx },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Determine Bank"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ String($json.bank_matched) }}",
+                    "rightValue": "true",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "matched"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        660,
+        300
+      ],
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "Bank Found?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 512,\n  \"temperature\": 0,\n  \"system\": \"あなたはクレジットカード/デビットカード明細メールから取引情報を抽出するアシスタントです。\\n\\n入力されたメール本文には、以下のいずれかの銀行/カード会社のフォーマットが含まれます。フォーマットは銀行ごとに異なりますが、抽出すべき情報は同じです。フィールド名の差異を吸収して record_expense ツールを呼び出してください。\\n\\n<想定される銀行フォーマット>\\n- 三菱UFJ-VISAデビット: 「ご利用日時」「ご利用先」「ご利用金額」\\n- 楽天カード: 「利用日」「利用先」「利用金額」\\n- 三井住友 VPass: 「ご利用日」「ご利用店名」「ご利用金額」\\n- JCB: 「ご利用日」「ご利用先」「ご利用額」\\n- その他: 上記に類するフォーマット\\n</想定される銀行フォーマット>\\n\\n<抽出ルール>\\n- transaction_date: 取引が発生した日付。ご利用日時/利用日/ご利用日 のいずれかから取得し、YYYY-MM-DD 形式に正規化\\n- amount_jpy: メールに記載された円額(税込・為替手数料込みの確定値)。「,」区切りは除去して数値化\\n- amount_original: 海外利用の場合のみ、原通貨額(例: \\\"US$199.00\\\", \\\"20.00 USD\\\")。国内利用なら空文字 \\\"\\\"\\n- vendor_raw: メール本文に記載された取引先表記をそのまま(整形しない)。例: \\\"ANTHROPIC PBC NEW YORK US\\\", \\\"AMAZON.CO.JP\\\", \\\"ONAMAE COM\\\"\\n- transaction_category: ご利用区分(海外ショッピング / ショッピング / 公共料金 / 1回払い 等)、なければ空文字\\n</抽出ルール>\\n\\n<重要>\\n- vendor_raw は **整形せずメールに書かれた通り** に出力。後段のルールマッチングで使うため\\n- amount_jpy は **メール記載値そのまま**(独自為替計算をしない)\\n- 円換算が併記されている場合(例: 15,586円(US$199.00))、円額を amount_jpy、原通貨額を amount_original に分けて格納\\n- 日付の年が省略されている場合(楽天カード等で「07/02」表記)、メール受信日時の年を補完する\\n</重要>\",\n  \"tools\": [\n    {\n      \"name\": \"record_expense\",\n      \"description\": \"クレカ明細メールから取引情報を抽出して記録する\",\n      \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"transaction_date\": {\n            \"type\": \"string\",\n            \"description\": \"取引発生日 (YYYY-MM-DD)\"\n          },\n          \"amount_jpy\": {\n            \"type\": \"number\",\n            \"description\": \"金額(円、明細記載値そのまま、税込・為替手数料込み)\"\n          },\n          \"amount_original\": {\n            \"type\": \"string\",\n            \"description\": \"原通貨額(海外利用時、例: 'US$199.00')、国内利用なら空文字\"\n          },\n          \"vendor_raw\": {\n            \"type\": \"string\",\n            \"description\": \"メール本文に記載された取引先表記そのまま(例: 'ANTHROPIC PBC NEW YORK US')\"\n          },\n          \"transaction_category\": {\n            \"type\": \"string\",\n            \"description\": \"ご利用区分(海外ショッピング / ショッピング / 1回払い 等)、なければ空文字\"\n          }\n        },\n        \"required\": [\n          \"transaction_date\",\n          \"amount_jpy\",\n          \"vendor_raw\"\n        ]\n      }\n    }\n  ],\n  \"tool_choice\": {\n    \"type\": \"tool\",\n    \"name\": \"record_expense\"\n  },\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"以下のクレカ明細メールから取引情報を抽出してください。\\n\\n<email_subject>\\n{{ JSON.stringify($json.subject || '').slice(1, -1) }}\\n</email_subject>\\n\\n<email_received_at>\\n{{ JSON.stringify($json.received_at || '').slice(1, -1) }}\\n</email_received_at>\\n\\n<email_body>\\n{{ JSON.stringify($json.body || '').slice(1, -1) }}\\n</email_body>\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ],
+      "id": "55555555-5555-5555-5555-555555555555",
+      "name": "Extract (Claude)",
+      "credentials": {
+        "httpCustomAuth": {
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Anthropic Tool Use レスポンスから抽出結果を取り出し、vendor_rules で照合する。\n// runOnceForEachItem: 各メールごとに 1 回走る。$('Determine Bank').item で\n// 現在処理中の item に対応する bank info を取得(pairedItem 経由)。\nconst apiResponse = $json;\nconst bankInfo = $('Determine Bank').item.json;\nconst configs = $('Load Configs').first().json;\n\nlet extracted = null;\nfor (const block of (apiResponse.content || [])) {\n  if (block.type === 'tool_use' && block.name === 'record_expense') {\n    extracted = block.input;\n    break;\n  }\n}\nif (!extracted) {\n  throw new Error('Tool use block not found in extract response: ' + JSON.stringify(apiResponse));\n}\n\n// vendor_rules.match_patterns で OR 照合(大文字無視・部分一致)\nconst vendorRaw = (extracted.vendor_raw || '').toUpperCase();\nlet ruleKey = null;\nlet rule = null;\nfor (const [key, r] of Object.entries(configs.vendor_rules)) {\n  if (key.startsWith('_')) continue;\n  for (const pat of (r.match_patterns || [])) {\n    if (vendorRaw.includes(pat.toUpperCase())) {\n      ruleKey = key;\n      rule = r;\n      break;\n    }\n  }\n  if (ruleKey) break;\n}\n\nreturn {\n  json: {\n    extract: extracted,\n    rule_matched: ruleKey !== null,\n    rule_key: ruleKey,\n    rule: rule,\n    bank: bankInfo,\n  }\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ],
+      "id": "66666666-6666-6666-6666-666666666666",
+      "name": "Parse + Rule Match"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ String($json.rule_matched) }}",
+                    "rightValue": "true",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rule_matched"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ String($json.rule_matched) }}",
+                    "rightValue": "false",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "rule_unmatched"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1320,
+        300
+      ],
+      "id": "77777777-7777-7777-7777-777777777777",
+      "name": "Rule Hit?"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// vendor_rules 一致時:rule から ledger 行と Slack payload を組み立て(完了通知)。\n// runOnceForEachItem: 各メールごとに 1 回走る。\nconst data = $json;\nconst r = data.rule;\nconst e = data.extract;\nconst b = data.bank;\n\nconst ledgerRow = {\n  date: e.transaction_date,\n  type: '経費',\n  category: r.category,\n  vendor: r.vendor,\n  description: r.description_template\n    ? (e.transaction_category ? `${r.description_template}(${e.transaction_category})` : r.description_template)\n    : (e.transaction_category || ''),\n  amount_jpy: e.amount_jpy,\n  payment_method: b.payment_method,\n  apportionment_pct: r.default_apportionment,\n  net_amount: Math.round(e.amount_jpy * r.default_apportionment / 100),\n  evidence_url: r.evidence_url_template,\n  note: `Sample02 自動記録(${e.transaction_date})/ ルール一致(${data.rule_key})`,\n};\n\nconst amountOriginal = e.amount_original ? ` / ${e.amount_original}` : '';\nconst slackText = `:white_check_mark: 自動記録しました\n─────────\n取引先: ${r.vendor}\n内容: ${e.transaction_category || ''}${amountOriginal}\n金額: ¥${e.amount_jpy.toLocaleString()} (按分 ${r.default_apportionment}% / 計上 ¥${ledgerRow.net_amount.toLocaleString()})\n日付: ${e.transaction_date}\n支払: ${b.payment_method}\n─────────\nledger に追加予定`;\n\nreturn {\n  json: {\n    flow: 'auto_record',\n    ledger_row: ledgerRow,\n    slack_text: slackText,\n    extract: e,\n    bank: b,\n    rule_key: data.rule_key,\n  }\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        200
+      ],
+      "id": "88888888-8888-8888-8888-88888888aaaa",
+      "name": "Apply Rule"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 512,\n  \"temperature\": 0,\n  \"system\": \"あなたは個人事業主・フリーランスの経費判定アシスタントです。\\n\\nクレカ明細メールから抽出された取引情報を、ユーザーの業務コンテキストに照らして以下を判定してください:\\n- 業務関連性(true / false)\\n- 推奨按分率(0〜100%)\\n- 推奨カテゴリ\\n- 判定理由(business_context のどの項目に該当したかを明示)\\n\\n<判定の指針>\\n- ユーザーの business_context に「業務に直接関連するもの(100%)」項目があれば、該当時は 100% を推奨\\n- 「業務に部分的に関連するもの(30〜70%)」項目に該当時は中間値を推奨し、必ず要レビュー\\n- 「業務無関係(0%)」項目に該当時は 0% を推奨し、ledger 追記をスキップ\\n- 商品名がメールから取れない取引(Amazon, メルカリ, 西友等の大手小売)は、金額レンジ + 取引先カテゴリから推測。ただし精度は低いため必ず要レビュー\\n- 高額取引(business_context の補足ルールで指定された閾値以上)は、業務関連と推測されても必ず要レビューに倒す\\n- **按分率の決定**: 商品詳細不明でも、business_context の「業務に直接関連するもの」に金額レンジ・取引先カテゴリで該当する可能性があるなら、推奨按分率はその項目の按分率(典型は 100)を出す。「不明だから保守的に 0」とはしない(0 にするのは「業務無関係」項目に該当する場合のみ)</判定の指針>\\n\\n<本プロンプトの呼び出し前提>\\n- このプロンプトは vendor_rules.json に未定義の取引のみが渡される(ルール一致時は呼ばれない)\\n- したがって decision_hint は必ず \\\"review_required\\\" または \\\"skip_not_business\\\" のどちらかを出す\\n- \\\"auto_record\\\" は出さない(ルール一致時の後段ロジック用に残してある値で、ここでは使わない)\\n</本プロンプトの呼び出し前提>\\n\\n<出力形式の厳守>\\n- JSON オブジェクトのみを出力する。前後に説明文・補足・Markdown 見出し・コードフェンス(```)を付けない\\n- 出力は `{` で始まり `}` で終わる。それ以外のテキストは一切含めない</出力形式の厳守>\\n\\n<出力形式>\\n{\\n  \\\"is_business_related\\\": true/false,\\n  \\\"vendor\\\": \\\"整形済みの取引先名(日本語表記、例: 'Amazon', 'お名前.com', '西友ネットスーパー')\\\",\\n  \\\"category\\\": \\\"ユーザーの business_context に応じた分類(LLM / ツール / 書籍 / ドメイン / 業務用デバイス / 食品・日用品 / その他 等)\\\",\\n  \\\"recommended_apportionment\\\": 0-100の整数,\\n  \\\"reasoning\\\": \\\"判定理由(2〜3 行、business_context のどの項目に該当したかを明示)\\\",\\n  \\\"decision_hint\\\": \\\"review_required | skip_not_business\\\"\\n}\\n</出力形式>\\n\\n<decision_hint の使い分け>\\n- \\\"review_required\\\": 業務関連の可能性が高い(または高額のため要確認)。AI 推奨値で ledger に自動追記しつつ Slack に「要レビュー」通知を出す\\n- \\\"skip_not_business\\\": 業務無関係と判定。ledger には追記せず、Slack に「スキップしました」通知のみ出す\\n- 注: review_required と recommended_apportionment は独立。要レビューでも按分率は AI 推奨値(該当 business_context 項目の按分率)を必ず出す。「人間確認が必要だから 0%」という倒し方はしない\\n</decision_hint の使い分け>\\n\\n<判定例>\\n例1: vendor_raw=AMAZON.CO.JP / amount_jpy=3300 / transaction_category=ショッピング\\n出力: {\\\"is_business_related\\\": true, \\\"vendor\\\": \\\"Amazon\\\", \\\"category\\\": \\\"書籍 or 業務用品\\\", \\\"recommended_apportionment\\\": 100, \\\"reasoning\\\": \\\"金額3,300円は技術書1冊の典型値。business_contextの「業務関連の技術書=100%」に該当する可能性が高い。商品名不明のため確認推奨。\\\", \\\"decision_hint\\\": \\\"review_required\\\"}\\n\\n例2: vendor_raw=AMAZON.CO.JP / amount_jpy=45000 / transaction_category=1回払い\\n出力: {\\\"is_business_related\\\": true, \\\"vendor\\\": \\\"Amazon\\\", \\\"category\\\": \\\"業務用デバイス or 高額技術書\\\", \\\"recommended_apportionment\\\": 100, \\\"reasoning\\\": \\\"金額45,000円は業務用デバイス(モニター/キーボード等)の可能性。business_contextの補足ルール「Amazon購入で1万円以上は手動確認」に該当→必ず要レビュー。按分率は業務用デバイスとして100%推奨。\\\", \\\"decision_hint\\\": \\\"review_required\\\"}\\n\\n例3: vendor_raw=ONAMAE COM / amount_jpy=1628 / transaction_category=ショッピング\\n出力: {\\\"is_business_related\\\": true, \\\"vendor\\\": \\\"お名前.com\\\", \\\"category\\\": \\\"ドメイン\\\", \\\"recommended_apportionment\\\": 100, \\\"reasoning\\\": \\\"お名前.comは業務用ドメイン取得の代表業者。1,628円は年間更新料の典型値。business_contextの「業務用ドメイン=100%」に該当。業務/個人の区別を確認するため要レビュー。\\\", \\\"decision_hint\\\": \\\"review_required\\\"}\\n\\n例4: vendor_raw=SEIYU NET SUPER / amount_jpy=820 / transaction_category=ショッピング\\n出力: {\\\"is_business_related\\\": false, \\\"vendor\\\": \\\"西友ネットスーパー\\\", \\\"category\\\": \\\"食品・日用品\\\", \\\"recommended_apportionment\\\": 0, \\\"reasoning\\\": \\\"SEIYU NET SUPERは食品スーパー。820円・店舗種別から食品・日用品と推測。business_contextの「業務無関係(食品/日用品/家庭用品)=0%」に該当→スキップ推奨。\\\", \\\"decision_hint\\\": \\\"skip_not_business\\\"}\\n</判定例>\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"以下の取引情報について、ユーザーの業務関連性と按分率を判定してください。\\n\\n<user_business_context>\\n{{ JSON.stringify($('Load Configs').first().json.business_context || '').slice(1, -1) }}\\n</user_business_context>\\n\\n<transaction>\\n取引先(原文): {{ JSON.stringify($json.extract.vendor_raw || '').slice(1, -1) }}\\n金額: {{ $json.extract.amount_jpy }} 円\\n原通貨: {{ JSON.stringify($json.extract.amount_original || '').slice(1, -1) }}\\nご利用区分: {{ JSON.stringify($json.extract.transaction_category || '').slice(1, -1) }}\\n取引日: {{ $json.extract.transaction_date }}\\n</transaction>\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"{\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        400
+      ],
+      "id": "88888888-8888-8888-8888-88888888bbbb",
+      "name": "Classify (Claude)",
+      "credentials": {
+        "httpCustomAuth": {
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Classify レスポンス(prefill=\"{\")を JSON.parse、Slack payload を組み立て。\n// Phase 1 仕様: 業務関連 → AI 推奨値で ledger 追記 + 要レビュー通知 / 業務無関係 → 追記スキップ + 通知のみ。\n// (Phase 2 で承認ボタン版に切り替え予定。spec.md 9 章参照)\n// runOnceForEachItem: 各メールごとに 1 回走る。Parse + Rule Match 出力は pairedItem 経由でアクセス。\nconst apiResponse = $json;\nconst data = $('Parse + Rule Match').item.json;\nconst e = data.extract;\nconst b = data.bank;\n\nconst text = '{' + (apiResponse.content[0].text || '');\nlet cls;\ntry {\n  cls = JSON.parse(text);\n} catch (err) {\n  throw new Error('classify JSON parse failed: ' + err.message + ' / raw=' + text);\n}\n\nconst amountOriginal = e.amount_original ? ` (${e.amount_original})` : '';\n\nif (!cls.is_business_related) {\n  // 業務無関係: ledger には追加しない、Slack に通知のみ\n  const slackText = `:no_entry_sign: 業務無関係と判定、スキップしました\n─────────\n取引先: ${cls.vendor} (${e.vendor_raw})\n内容: ¥${e.amount_jpy.toLocaleString()} の${e.transaction_category || 'ショッピング'}${amountOriginal}\n日付: ${e.transaction_date}\n─────────\n:robot_face: AI 判定理由: ${cls.reasoning}\n─────────\n※ ledger には追加していません。業務扱いにしたい場合は手動で追加してください。`;\n  return {\n    json: {\n      flow: 'skipped_not_business',\n      ledger_row: null,\n      slack_text: slackText,\n      classify: cls,\n      extract: e,\n      bank: b,\n    }\n  };\n}\n\n// 業務関連: AI 推奨値で ledger 追記(備考に要レビューマーカー)+ Slack に要レビュー通知\nconst netAmount = Math.round(e.amount_jpy * cls.recommended_apportionment / 100);\nconst reasoningOneLine = (cls.reasoning || '').replace(/\\s+/g, ' ').slice(0, 300);\nconst ledgerRow = {\n  date: e.transaction_date,\n  type: '経費',\n  category: cls.category,\n  vendor: cls.vendor,\n  description: e.transaction_category || '',\n  amount_jpy: e.amount_jpy,\n  payment_method: b.payment_method,\n  apportionment_pct: cls.recommended_apportionment,\n  net_amount: netAmount,\n  evidence_url: '',\n  note: `Sample02 AI判定(${e.transaction_date})/ ⚠ 要レビュー(AI 推奨)/ ${reasoningOneLine}`,\n};\n\nconst slackText = `:warning: AI 推奨で自動追記しました(要レビュー)\n─────────\n取引先: ${cls.vendor} (${e.vendor_raw})\n内容: ¥${e.amount_jpy.toLocaleString()} の${e.transaction_category || 'ショッピング'}${amountOriginal}\n日付: ${e.transaction_date}\n支払: ${b.payment_method}\nカテゴリ: ${cls.category} / 按分 ${cls.recommended_apportionment}% / 計上 ¥${netAmount.toLocaleString()}\n─────────\n:robot_face: AI 判定理由: ${cls.reasoning}\n─────────\nledger に追加予定。按分率に違和感があれば手動で修正してください。`;\n\nreturn {\n  json: {\n    flow: 'review_required',\n    ledger_row: ledgerRow,\n    slack_text: slackText,\n    classify: cls,\n    extract: e,\n    bank: b,\n  }\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        400
+      ],
+      "id": "99999999-9999-9999-9999-999999999999",
+      "name": "Format From AI"
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        1980,
+        300
+      ],
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "name": "Merge Paths"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Step 7 Phase A: finance/ledger_2026.csv への追記。\n// auto_record / review_required → AI 推奨 or ルール値で追記、skipped_not_business → ledger 触らず。\n// 重複検知: 取引先 + 金額 + 日付の3点一致でスキップ。\n// git commit/push は Phase B 以降(現状は週次レビューで人間がまとめてコミット)。\n// runOnceForEachItem: 各 item ごとに逐次走るため、複数同時着信時も fs append のレースは発生しない。\nconst fs = require('fs');\n\nconst data = $json;\n\n// 業務無関係スキップ: ledger 操作なし、Slack 通知(skip)はそのまま下流へ\nif (data.flow === 'skipped_not_business' || !data.ledger_row) {\n  return { json: { ...data, append_status: 'skipped_not_business' } };\n}\n\nconst r = data.ledger_row;\nconst LEDGER_PATH = '/data/finance/ledger_2026.csv';\n\n// RFC 4180 準拠: カンマ・改行・ダブルクォート・先頭末尾の空白を含む値のみクォート。\n// 既存手動行(クォートなし)とフォーマットを揃え、混在を避ける。\nconst csvField = (v) => {\n  const s = (v == null) ? '' : String(v);\n  if (/[,\"\\n\\r]/.test(s) || /^\\s/.test(s) || /\\s$/.test(s)) {\n    return '\"' + s.replace(/\"/g, '\"\"') + '\"';\n  }\n  return s;\n};\n\nconst newRow = [\n  r.date,\n  r.type,\n  r.category,\n  r.vendor,\n  r.description || '',\n  r.amount_jpy,\n  r.payment_method,\n  r.apportionment_pct,\n  r.net_amount,\n  r.evidence_url || '',\n  r.note || '',\n].map(csvField).join(',');\n\nif (!fs.existsSync(LEDGER_PATH)) {\n  throw new Error('Ledger file not found: ' + LEDGER_PATH);\n}\n\n// 重複検知(雑な部分一致だが、CSV カラム値をクォート前提で照合)\nconst existing = fs.readFileSync(LEDGER_PATH, 'utf-8');\nconst isDup = existing.split(/\\r?\\n/).some(line => {\n  if (!line.trim()) return false;\n  return line.includes('\"' + r.date + '\"')\n    && line.includes('\"' + r.vendor + '\"')\n    && line.includes('\"' + r.amount_jpy + '\"');\n});\n\nif (isDup) {\n  return {\n    json: {\n      ...data,\n      append_status: 'duplicate',\n      slack_text: ':information_source: 重複スキップ\\n─────────\\n取引先: ' + r.vendor\n        + '\\n金額: ¥' + r.amount_jpy.toLocaleString()\n        + '\\n日付: ' + r.date\n        + '\\n─────────\\n既に同一取引が ledger に記録されているため、追記しませんでした。',\n    }\n  };\n}\n\n// 末尾改行を保証して追記\nconst needsNewline = existing.length > 0 && !existing.endsWith('\\n');\nfs.appendFileSync(LEDGER_PATH, (needsNewline ? '\\n' : '') + newRow + '\\n');\n\n// 上流の Slack テキスト「ledger に追加予定」を「ledger に追加完了」に置換\nconst updatedSlackText = (data.slack_text || '').replace('ledger に追加予定', 'ledger に追加完了');\n\nreturn {\n  json: {\n    ...data,\n    append_status: 'appended',\n    slack_text: updatedSlackText,\n  }\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        300
+      ],
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "name": "Append Ledger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL_SAMPLE02 }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": {{ JSON.stringify($json.slack_text) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        300
+      ],
+      "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "name": "Post to Slack"
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Configs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Configs": {
+      "main": [
+        [
+          {
+            "node": "Determine Bank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Bank": {
+      "main": [
+        [
+          {
+            "node": "Bank Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bank Found?": {
+      "main": [
+        [
+          {
+            "node": "Extract (Claude)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Extract (Claude)": {
+      "main": [
+        [
+          {
+            "node": "Parse + Rule Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Rule Match": {
+      "main": [
+        [
+          {
+            "node": "Rule Hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule Hit?": {
+      "main": [
+        [
+          {
+            "node": "Apply Rule",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify (Claude)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Rule": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify (Claude)": {
+      "main": [
+        [
+          {
+            "node": "Format From AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format From AI": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Paths": {
+      "main": [
+        [
+          {
+            "node": "Append Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Ledger": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2",
+  "meta": {},
+  "tags": []
+}

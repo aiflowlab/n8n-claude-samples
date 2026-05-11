@@ -1,0 +1,39 @@
+{
+  "_comment": "銀行/カード会社の送信元ホワイトリスト。新規銀行追加は 1 エントリ追加するだけで動く。各キーは識別子(自由命名)、value は { from, subject_pattern, payment_method, display_name }。",
+  "_usage": "このファイルを bank_senders.json としてコピーし、自分が利用する銀行/カードに合わせて編集。複数銀行併用に対応。",
+
+  "mufg_visa_debit": {
+    "from": "direct@mail.bk.mufg.jp",
+    "subject_pattern": "【三菱UFJ-VISAデビット】ご利用のお知らせ",
+    "payment_method": "デビット(MUFG)",
+    "display_name": "三菱UFJ銀行 VISAデビット"
+  },
+
+  "rakuten_card": {
+    "from": "info@mail.rakuten-card.co.jp",
+    "subject_pattern": "カード利用のお知らせ",
+    "payment_method": "クレジット(楽天カード)",
+    "display_name": "楽天カード"
+  },
+
+  "smbc_vpass": {
+    "from": "statement@vpass.ne.jp",
+    "subject_pattern": "ご利用のお知らせ",
+    "payment_method": "クレジット(三井住友 VISA)",
+    "display_name": "三井住友 VPass"
+  },
+
+  "jcb_card": {
+    "from": "notice@jcb-card.co.jp",
+    "subject_pattern": "JCBカード ご利用のお知らせ",
+    "payment_method": "クレジット(JCB)",
+    "display_name": "JCB カード"
+  },
+
+  "sumishin_sbi_debit": {
+    "from": "info@www.netbk.co.jp",
+    "subject_pattern": "デビットカードご利用のお知らせ",
+    "payment_method": "デビット(住信SBI)",
+    "display_name": "住信SBIネット銀行 デビット"
+  }
+}
