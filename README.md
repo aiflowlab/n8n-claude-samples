@@ -132,6 +132,68 @@ Gmail Trigger → Load Configs → Determine Bank → Bank Found? → Extract (C
 - [Slack 完了通知](./samples/sample02/demo/screenshots/slack_complete.png)
 - [Slack 要レビュー通知(AI 判定理由付き)](./samples/sample02/demo/screenshots/slack_review.png)
 
+## 動かし方(Sample02)
+
+### 前提
+
+- Docker(n8n 用)
+- Python 3.10+
+- Anthropic API キー
+- Gmail アカウント(業務専用推奨)+ GCP プロジェクト(Gmail API 有効化済み)
+- Slack Workspace + Incoming Webhook(専用チャンネル推奨)
+
+### 1. 設定ファイルを準備
+
+```bash
+cd samples/sample02/config
+
+# .example をコピーして編集
+cp bank_senders.example.json bank_senders.json
+cp vendor_rules.example.json vendor_rules.json
+cp business_context.example.md business_context.md
+```
+
+- `bank_senders.json`: 使用している銀行/カード会社の送信元メールアドレスを確認・追記
+- `vendor_rules.json`: 毎月固定で来る取引先(SaaS 等)をルールとして登録
+- `business_context.md`: 自分の事業内容を自由文で記述(AI 判定の基準になります)
+
+### 2. n8n を起動(Docker Compose)
+
+```bash
+# docker-compose.yml は別途用意してください
+docker compose up -d
+# http://localhost:5678 にアクセスして初期セットアップ
+```
+
+### 3. Gmail OAuth を設定
+
+1. [GCP Console](https://console.cloud.google.com/) でプロジェクトを作成し Gmail API を有効化
+2. OAuth 同意画面を設定(External / Test mode)
+3. OAuth クライアント ID を作成(Web アプリ、リダイレクト URI: `http://localhost:5678/rest/oauth2-credential/callback`)
+4. n8n の Credentials に Gmail OAuth2 API を追加し、スコープは `gmail.modify` + `gmail.labels` を選択
+
+### 4. ワークフローをビルド・インポート
+
+```bash
+cd samples/sample02
+python3 scripts/build_n8n_workflow.py
+```
+
+生成された `n8n/sample02_workflow.json` を n8n UI からインポート。インポート後は **Unpublish → Publish** で Active 化。
+
+### 5. 抽出精度をローカル検証
+
+```bash
+cd samples/sample02
+python3 scripts/test_extract.py
+```
+
+7 件のテストケースを Anthropic API に直接投げて、抽出精度と AI 判定結果を確認します(コスト約 6 円)。
+
+### 6. 実メールで動作確認
+
+n8n を Active 化した状態で、登録済みの銀行/カード会社からのメールを Gmail で受信すると自動的にワークフローが動きます。Slack の指定チャンネルに通知が届けば成功です。
+
 ## ディレクトリ構成
 
 ```
