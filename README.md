@@ -68,9 +68,14 @@ docker compose up -d
 # http://localhost:5678 にアクセスして初期セットアップ
 ```
 
-### 3. ワークフローをインポート
+### 3. ワークフローをビルド・インポート
 
-n8n UI から `samples/sample01/n8n/sample01_workflow.json` をインポート。インポート後は **Unpublish → Publish** で Active 化(import 直後は Draft 状態)。
+```bash
+cd samples/sample01
+python3 scripts/build_n8n_workflow.py
+```
+
+生成された `n8n/sample01_workflow.json` を n8n UI からインポート。インポート後は **Unpublish → Publish** で Active 化(import 直後は Draft 状態)。
 
 ### 4. 分類精度をローカル検証
 
