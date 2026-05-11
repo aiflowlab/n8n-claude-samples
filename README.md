@@ -196,7 +196,7 @@ MIT License — 商用利用・改変・再配布自由。詳しくは [LICENSE]
 ## 関連記事
 
 **Sample01**
-- note: [Claude Haiku 4.5 + n8n で問い合わせ対応ワークフローを作った](https://note.com/aiflowlab/n/n510b10be496c)
+- note: [問い合わせ対応を AI 化したら、月 1,000 通でも 500 円(精度 100%)になった話【コード公開】](https://note.com/aiflowlab/n/n510b10be496c)
 - Zenn: [Claude Haiku 4.5 + n8n で問い合わせ対応ワークフローを作ったら、100% 精度・1 件 0.5 円で運用できた](https://zenn.dev/aiflowlab/articles/n8n-claude-haiku-inquiry-workflow)
 
 **Sample02**
